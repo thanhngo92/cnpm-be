@@ -16,15 +16,12 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
     },
 
-<<<<<<< HEAD
-=======
     phoneNumber: {
       type: String,
       required: true,
       trim: true,
     },
 
->>>>>>> master
     password: {
       type: String,
       required: true,

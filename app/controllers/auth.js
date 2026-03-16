@@ -11,25 +11,13 @@ const generateToken = (user) => {
     },
     process.env.JWT_SECRET,
     {
-      expiresIn: process.env.JWT_EXPIRES_IN || "15p",
+      expiresIn: process.env.JWT_EXPIRES_IN || "15m",
     }
   );
 };
 
 export const register = async (req, res) => {
   try {
-<<<<<<< HEAD
-    const { fullName, email, password } = req.body;
-
-    if (!fullName || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Vui lòng nhập đầy đủ fullName, email, password",
-      });
-    }
-
-    const existingUser = await User.findOne({ email });
-=======
     const { fullName, email, phoneNumber, password } = req.body;
 
     if (!fullName || !email || !phoneNumber || !password) {
@@ -42,8 +30,6 @@ export const register = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     const existingUser = await User.findOne({ email: normalizedEmail });
->>>>>>> master
-
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -54,14 +40,10 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = await User.create({
-<<<<<<< HEAD
-      fullName,
-      email,
-=======
+
       fullName: fullName.trim(),
       email: normalizedEmail,
       phoneNumber: phoneNumber.trim(),
->>>>>>> master
       password: hashedPassword,
     });
 
@@ -75,20 +57,23 @@ export const register = async (req, res) => {
           id: newUser._id,
           fullName: newUser.fullName,
           email: newUser.email,
-<<<<<<< HEAD
-=======
+
           phoneNumber: newUser.phoneNumber,
->>>>>>> master
           role: newUser.role,
         },
         token,
       },
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Email đã tồn tại",
+      });
+    }
     return res.status(500).json({
       success: false,
       message: "Lỗi server khi đăng ký",
-      error: error.message,
     });
   }
 };
@@ -104,12 +89,8 @@ export const login = async (req, res) => {
       });
     }
 
-<<<<<<< HEAD
-    const user = await User.findOne({ email });
-=======
     const normalizedEmail = email.trim().toLowerCase();
     const user = await User.findOne({ email: normalizedEmail });
->>>>>>> master
 
     if (!user) {
       return res.status(401).json({
@@ -137,10 +118,8 @@ export const login = async (req, res) => {
           id: user._id,
           fullName: user.fullName,
           email: user.email,
-<<<<<<< HEAD
-=======
+
           phoneNumber: user.phoneNumber,
->>>>>>> master
           role: user.role,
         },
         token,
@@ -150,34 +129,19 @@ export const login = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Lỗi server khi đăng nhập",
-      error: error.message,
     });
   }
 };
 
-export const logout = async (req, res) => {
-  try {
-    return res.status(200).json({
-      success: true,
-      message: "Đăng xuất thành công",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Lỗi server khi đăng xuất",
-      error: error.message,
-    });
-  }
+export const logout = (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: "Đăng xuất thành công",
+  });
 };
 
 export const getMe = async (req, res) => {
   try {
-<<<<<<< HEAD
-    return res.status(200).json({
-      success: true,
-      message: "Lấy thông tin user thành công",
-      data: req.user,
-=======
     const user = {
       id: req.user._id,
       fullName: req.user.fullName,
@@ -192,13 +156,11 @@ export const getMe = async (req, res) => {
       success: true,
       message: "Lấy thông tin user thành công",
       data: user,
->>>>>>> master
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Lỗi server khi lấy thông tin user",
-      error: error.message,
     });
   }
 };
