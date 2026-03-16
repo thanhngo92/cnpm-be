@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Cosmetics Shop Management Backend
 
 Backend API for Cosmetics Shop Management Software.
@@ -17,3 +18,6 @@ npm install
 Start server:
 
 node server.js
+=======
+# cnpm-be
+>>>>>>> master

@@ -18,6 +18,7 @@ const generateToken = (user) => {
 
 export const register = async (req, res) => {
   try {
+<<<<<<< HEAD
     const { fullName, email, password } = req.body;
 
     if (!fullName || !email || !password) {
@@ -28,6 +29,20 @@ export const register = async (req, res) => {
     }
 
     const existingUser = await User.findOne({ email });
+=======
+    const { fullName, email, phoneNumber, password } = req.body;
+
+    if (!fullName || !email || !phoneNumber || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ fullName, email, phoneNumber, password",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+>>>>>>> master
 
     if (existingUser) {
       return res.status(409).json({
@@ -39,8 +54,14 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = await User.create({
+<<<<<<< HEAD
       fullName,
       email,
+=======
+      fullName: fullName.trim(),
+      email: normalizedEmail,
+      phoneNumber: phoneNumber.trim(),
+>>>>>>> master
       password: hashedPassword,
     });
 
@@ -54,6 +75,10 @@ export const register = async (req, res) => {
           id: newUser._id,
           fullName: newUser.fullName,
           email: newUser.email,
+<<<<<<< HEAD
+=======
+          phoneNumber: newUser.phoneNumber,
+>>>>>>> master
           role: newUser.role,
         },
         token,
@@ -79,7 +104,12 @@ export const login = async (req, res) => {
       });
     }
 
+<<<<<<< HEAD
     const user = await User.findOne({ email });
+=======
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
+>>>>>>> master
 
     if (!user) {
       return res.status(401).json({
@@ -107,6 +137,10 @@ export const login = async (req, res) => {
           id: user._id,
           fullName: user.fullName,
           email: user.email,
+<<<<<<< HEAD
+=======
+          phoneNumber: user.phoneNumber,
+>>>>>>> master
           role: user.role,
         },
         token,
@@ -138,10 +172,27 @@ export const logout = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
+<<<<<<< HEAD
     return res.status(200).json({
       success: true,
       message: "Lấy thông tin user thành công",
       data: req.user,
+=======
+    const user = {
+      id: req.user._id,
+      fullName: req.user.fullName,
+      email: req.user.email,
+      phoneNumber: req.user.phoneNumber,
+      role: req.user.role,
+      createdAt: req.user.createdAt,
+      updatedAt: req.user.updatedAt,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Lấy thông tin user thành công",
+      data: user,
+>>>>>>> master
     });
   } catch (error) {
     return res.status(500).json({
