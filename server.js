@@ -5,8 +5,7 @@ dotenv.config();
 
 import connectDB from "./app/config/db.js";
 import authRoutes from "./app/routes/auth.js";
-
-
+import userRoutes from "./app/routes/user.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -29,6 +28,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);

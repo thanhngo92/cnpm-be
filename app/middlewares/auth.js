@@ -7,8 +7,7 @@ export const verifyToken = async (req, res, next) => {
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
-        success: false,
-        message: "Không có token",
+        message: "Bạn chưa đăng nhập",
       });
     }
 
@@ -20,8 +19,7 @@ export const verifyToken = async (req, res, next) => {
 
     if (!user) {
       return res.status(401).json({
-        success: false,
-        message: "User không tồn tại",
+        message: "Người dùng không tồn tại",
       });
     }
 
@@ -29,9 +27,7 @@ export const verifyToken = async (req, res, next) => {
     next();
   } catch (error) {
     return res.status(401).json({
-      success: false,
       message: "Token không hợp lệ hoặc đã hết hạn",
-      error: error.message,
     });
   }
 };
