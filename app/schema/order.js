@@ -1,41 +1,5 @@
 import mongoose from "mongoose";
 
-const orderItemSchema = new mongoose.Schema(
-    {
-        productId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Product",
-            required: true,
-        },
-        productName: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-        imageUrl: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-        price: {
-            type: Number,
-            required: true,
-            min: 0,
-        },
-        quantity: {
-            type: Number,
-            required: true,
-            min: 1,
-        },
-        variant: {
-            type: String,
-            trim: true,
-            default: "",
-        },
-    },
-    { _id: false }
-);
-
 const orderSchema = new mongoose.Schema(
     {
         code: {
@@ -44,7 +8,12 @@ const orderSchema = new mongoose.Schema(
             unique: true,
             trim: true,
         },
-        customerName: {
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
+        receiverName: {
             type: String,
             required: true,
             trim: true,
@@ -59,7 +28,7 @@ const orderSchema = new mongoose.Schema(
             required: true,
             trim: true,
         },
-        status: {
+        orderStatus: {
             type: String,
             enum: ["pending", "shipping", "completed", "cancelled"],
             default: "pending",
@@ -68,20 +37,6 @@ const orderSchema = new mongoose.Schema(
             type: String,
             enum: ["cod", "bank", "ewallet", "qr"],
             required: true,
-        },
-        paymentStatus: {
-            type: String,
-            enum: ["unpaid", "paid"],
-            default: "unpaid",
-        },
-        shippingMethod: {
-            type: String,
-            enum: ["standard", "express"],
-            default: "standard",
-        },
-        items: {
-            type: [orderItemSchema],
-            default: [],
         },
         subtotal: {
             type: Number,
@@ -103,11 +58,6 @@ const orderSchema = new mongoose.Schema(
             type: String,
             trim: true,
             default: "",
-        },
-        userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-            default: null,
         },
     },
     {

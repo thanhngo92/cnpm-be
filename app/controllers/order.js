@@ -1,12 +1,10 @@
 import mongoose from "mongoose";
 import Order from "../schema/order.js";
+import OrderItem from "../schema/orderItem.js";
 import Product from "../schema/product.js";
 
 const FREE_SHIP_THRESHOLD = 500000;
-const SHIPPING_FEE_BY_METHOD = {
-    standard: 30000,
-    express: 50000,
-};
+const DEFAULT_SHIPPING_FEE = 30000;
 
 const generateOrderCode = () => {
     const now = new Date();
@@ -18,31 +16,59 @@ const generateOrderCode = () => {
     return `GLU-${yyyy}${mm}${dd}-${random}`;
 };
 
-const mapOrder = (order) => ({
+const mapOrderItem = (item) => ({
+    productId: item.productId,
+    productName: item.productName,
+    imageUrl: item.imageUrl,
+    price: item.price,
+    quantity: item.quantity,
+    ...(item.variant ? { variant: item.variant } : {}),
+});
+
+const mapOrder = (order, items = []) => ({
     id: order._id,
     code: order.code,
-    customerName: order.customerName,
+    receiverName: order.receiverName,
     phone: order.phone,
     address: order.address,
     createdAt: order.createdAt,
-    status: order.status,
+    orderStatus: order.orderStatus,
     paymentMethod: order.paymentMethod,
-    paymentStatus: order.paymentStatus,
-    shippingMethod: order.shippingMethod,
-    items: order.items.map((item) => ({
-        productId: item.productId,
-        productName: item.productName,
-        imageUrl: item.imageUrl,
-        price: item.price,
-        quantity: item.quantity,
-        ...(item.variant ? { variant: item.variant } : {}),
-    })),
+    items: items.map(mapOrderItem),
     subtotal: order.subtotal,
     shippingFee: order.shippingFee,
     totalAmount: order.totalAmount,
     ...(order.note ? { note: order.note } : {}),
     userId: order.userId ?? null,
 });
+
+const attachItemsToOrders = async (orders) => {
+    if (orders.length === 0) {
+        return [];
+    }
+
+    const orderIds = orders.map((order) => order._id);
+    const orderItems = await OrderItem.find({ orderId: { $in: orderIds } }).sort({
+        _id: 1,
+    });
+
+    const itemsByOrderId = new Map();
+
+    for (const item of orderItems) {
+        const key = String(item.orderId);
+        const list = itemsByOrderId.get(key) ?? [];
+        list.push(item);
+        itemsByOrderId.set(key, list);
+    }
+
+    return orders.map((order) =>
+        mapOrder(order, itemsByOrderId.get(String(order._id)) ?? [])
+    );
+};
+
+const getOrderItems = async (orderId) => {
+    return OrderItem.find({ orderId }).sort({ _id: 1 });
+};
 
 const isAdmin = (req) => req.user?.role === "admin";
 
@@ -59,18 +85,12 @@ const restoreOrderItemsStock = async (items) => {
     }
 };
 
-const normalizeShippingMethod = (value) =>
-    value === "express" ? "express" : "standard";
-
-const isValidShippingMethod = (value) =>
-    value === undefined || value === "standard" || value === "express";
-
-const calcShippingFee = (method, subtotal) => {
-    if (subtotal >= FREE_SHIP_THRESHOLD) {
+const calcShippingFee = (subtotal) => {
+    if (subtotal > FREE_SHIP_THRESHOLD) {
         return 0;
     }
 
-    return SHIPPING_FEE_BY_METHOD[method] ?? SHIPPING_FEE_BY_METHOD.standard;
+    return DEFAULT_SHIPPING_FEE;
 };
 
 export const getOrdersForAdmin = async (req, res) => {
@@ -81,7 +101,7 @@ export const getOrdersForAdmin = async (req, res) => {
             });
         }
 
-        const { status, paymentStatus, page = 1, limit = 20 } = req.query;
+        const { orderStatus, page = 1, limit = 20 } = req.query;
 
         const parsedPage = Math.max(Number(page) || 1, 1);
         const parsedLimit = Math.max(Number(limit) || 20, 1);
@@ -89,16 +109,17 @@ export const getOrdersForAdmin = async (req, res) => {
 
         const query = {};
 
-        if (status) query.status = status;
-        if (paymentStatus) query.paymentStatus = paymentStatus;
+        if (orderStatus) query.orderStatus = orderStatus;
 
         const [orders, total] = await Promise.all([
             Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(parsedLimit),
             Order.countDocuments(query),
         ]);
 
+        const mappedOrders = await attachItemsToOrders(orders);
+
         return res.status(200).json({
-            orders: orders.map(mapOrder),
+            orders: mappedOrders,
             pagination: {
                 page: parsedPage,
                 limit: parsedLimit,
@@ -116,9 +137,10 @@ export const getOrdersForAdmin = async (req, res) => {
 export const getMyOrders = async (req, res) => {
     try {
         const orders = await Order.find({ userId: req.user._id }).sort({ createdAt: -1 });
+        const mappedOrders = await attachItemsToOrders(orders);
 
         return res.status(200).json({
-            orders: orders.map(mapOrder),
+            orders: mappedOrders,
         });
     } catch (error) {
         return res.status(500).json({
@@ -143,8 +165,10 @@ export const getOrder = async (req, res) => {
             });
         }
 
+        const items = await getOrderItems(order._id);
+
         return res.status(200).json({
-            order: mapOrder(order),
+            order: mapOrder(order, items),
         });
     } catch (error) {
         return res.status(500).json({
@@ -155,20 +179,14 @@ export const getOrder = async (req, res) => {
 
 export const createOrder = async (req, res) => {
     try {
-        const {
-            paymentMethod,
-            items,
-            shippingMethod,
-            note,
-        } = req.body;
+        const { paymentMethod, items, note } = req.body;
 
-        // Bắt buộc lấy thông tin từ Profile (không cho phép client gửi thông tin khác)
-        const customerName = req.user.name;
+        const receiverName = req.user.name;
         const phone = req.user.phone;
         const address = req.user.address;
 
         if (
-            !customerName ||
+            !receiverName ||
             !phone ||
             !address ||
             !paymentMethod ||
@@ -176,7 +194,8 @@ export const createOrder = async (req, res) => {
             items.length === 0
         ) {
             return res.status(400).json({
-                message: "Vui lòng cập nhật đầy đủ thông tin (Họ tên, SĐT, Địa chỉ) trong hồ sơ cá nhân trước khi đặt hàng",
+                message:
+                    "Vui lòng cập nhật đầy đủ thông tin (Họ tên, SĐT, Địa chỉ) trong hồ sơ cá nhân trước khi đặt hàng",
             });
         }
 
@@ -186,23 +205,15 @@ export const createOrder = async (req, res) => {
             });
         }
 
-        const normalizedCustomerName = String(customerName).trim();
+        const normalizedReceiverName = String(receiverName).trim();
         const normalizedPhone = String(phone).trim();
         const normalizedAddress = String(address).trim();
 
-        if (!normalizedCustomerName || !normalizedPhone || !normalizedAddress) {
+        if (!normalizedReceiverName || !normalizedPhone || !normalizedAddress) {
             return res.status(400).json({
                 message: "Thông tin người nhận không hợp lệ",
             });
         }
-
-        if (!isValidShippingMethod(shippingMethod)) {
-            return res.status(400).json({
-                message: "Phương thức giao hàng không hợp lệ",
-            });
-        }
-
-        const normalizedShippingMethod = normalizeShippingMethod(shippingMethod);
 
         const normalizedItems = [];
         let subtotal = 0;
@@ -261,8 +272,9 @@ export const createOrder = async (req, res) => {
                 product.discountPrice && product.discountPrice > 0
                     ? product.discountPrice
                     : product.price;
+            const lineTotal = unitPrice * quantity;
 
-            subtotal += unitPrice * quantity;
+            subtotal += lineTotal;
 
             normalizedItems.push({
                 productId: product._id,
@@ -270,28 +282,34 @@ export const createOrder = async (req, res) => {
                 imageUrl: product.imageUrl,
                 price: unitPrice,
                 quantity,
+                lineTotal,
                 variant: item.variant?.trim() || "",
             });
         }
 
-        const finalShippingFee = calcShippingFee(normalizedShippingMethod, subtotal);
+        const finalShippingFee = calcShippingFee(subtotal);
         const totalAmount = subtotal + finalShippingFee;
 
         const newOrder = await Order.create({
             code: generateOrderCode(),
-            customerName: normalizedCustomerName,
+            receiverName: normalizedReceiverName,
             phone: normalizedPhone,
             address: normalizedAddress,
+            orderStatus: "pending",
             paymentMethod,
-            paymentStatus: "unpaid",
-            shippingMethod: normalizedShippingMethod,
-            items: normalizedItems,
             subtotal,
             shippingFee: finalShippingFee,
             totalAmount,
             note: note?.trim() || "",
             userId: req.user._id,
         });
+
+        const orderItems = normalizedItems.map((item) => ({
+            orderId: newOrder._id,
+            ...item,
+        }));
+
+        await OrderItem.insertMany(orderItems);
 
         for (const item of normalizedItems) {
             await Product.findByIdAndUpdate(item.productId, {
@@ -301,7 +319,7 @@ export const createOrder = async (req, res) => {
 
         return res.status(201).json({
             message: "Tạo đơn hàng thành công",
-            order: mapOrder(newOrder),
+            order: mapOrder(newOrder, orderItems),
         });
     } catch (error) {
         return res.status(500).json({
@@ -318,7 +336,7 @@ export const updateOrderStatus = async (req, res) => {
             });
         }
 
-        const { customerName, phone, status, paymentStatus } = req.body;
+        const { receiverName, phone, orderStatus } = req.body;
 
         const order = await Order.findById(req.params.id);
 
@@ -328,16 +346,16 @@ export const updateOrderStatus = async (req, res) => {
             });
         }
 
-        let previousStatus = order.status;
+        let previousStatus = order.orderStatus;
 
-        if (status !== undefined) {
-            if (!["pending", "shipping", "completed", "cancelled"].includes(status)) {
+        if (orderStatus !== undefined) {
+            if (!["pending", "shipping", "completed", "cancelled"].includes(orderStatus)) {
                 return res.status(400).json({
                     message: "Trạng thái đơn hàng không hợp lệ",
                 });
             }
 
-            const currentStatus = order.status;
+            const currentStatus = order.orderStatus;
             previousStatus = currentStatus;
 
             const allowedTransitions = {
@@ -348,37 +366,27 @@ export const updateOrderStatus = async (req, res) => {
             };
 
             if (
-                status !== currentStatus &&
-                !allowedTransitions[currentStatus]?.includes(status)
+                orderStatus !== currentStatus &&
+                !allowedTransitions[currentStatus]?.includes(orderStatus)
             ) {
                 return res.status(400).json({
                     message: "Không thể chuyển trạng thái đơn hàng như yêu cầu",
                 });
             }
 
-            order.status = status;
+            order.orderStatus = orderStatus;
         }
 
-        if (paymentStatus !== undefined) {
-            if (!["unpaid", "paid"].includes(paymentStatus)) {
+        if (receiverName !== undefined) {
+            const normalizedReceiverName = String(receiverName).trim();
+
+            if (!normalizedReceiverName) {
                 return res.status(400).json({
-                    message: "Trạng thái thanh toán không hợp lệ",
+                    message: "Tên người nhận không được để trống",
                 });
             }
 
-            order.paymentStatus = paymentStatus;
-        }
-
-        if (customerName !== undefined) {
-            const normalizedCustomerName = String(customerName).trim();
-
-            if (!normalizedCustomerName) {
-                return res.status(400).json({
-                    message: "Tên khách hàng không được để trống",
-                });
-            }
-
-            order.customerName = normalizedCustomerName;
+            order.receiverName = normalizedReceiverName;
         }
 
         if (phone !== undefined) {
@@ -395,13 +403,15 @@ export const updateOrderStatus = async (req, res) => {
 
         await order.save();
 
-        if (status === "cancelled" && previousStatus !== "cancelled") {
-            await restoreOrderItemsStock(order.items);
+        const items = await getOrderItems(order._id);
+
+        if (orderStatus === "cancelled" && previousStatus !== "cancelled") {
+            await restoreOrderItemsStock(items);
         }
 
         return res.status(200).json({
             message: "Cập nhật đơn hàng thành công",
-            order: mapOrder(order),
+            order: mapOrder(order, items),
         });
     } catch (error) {
         return res.status(500).json({
@@ -426,20 +436,21 @@ export const cancelOrder = async (req, res) => {
             });
         }
 
-        if (!["pending"].includes(order.status)) {
+        if (order.orderStatus !== "pending") {
             return res.status(400).json({
                 message: "Chỉ có thể hủy đơn hàng đang chờ xử lý",
             });
         }
 
-        order.status = "cancelled";
+        order.orderStatus = "cancelled";
         await order.save();
 
-        await restoreOrderItemsStock(order.items);
+        const items = await getOrderItems(order._id);
+        await restoreOrderItemsStock(items);
 
         return res.status(200).json({
             message: "Hủy đơn hàng thành công",
-            order: mapOrder(order),
+            order: mapOrder(order, items),
         });
     } catch (error) {
         return res.status(500).json({
