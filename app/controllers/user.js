@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import User from "../schema/user.js";
 
 export const getAllUsers = async (req, res) => {
@@ -124,6 +123,52 @@ export const updateCurrentUser = async (req, res) => {
     return res.status(500).json({
       message: "Lỗi server khi cập nhật user",
     });
+  }
+};
+
+export const updateUserByAdmin = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Bạn không có quyền truy cập" });
+    }
+
+    const { name, phone, address } = req.body;
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy user" });
+    }
+
+    if (name !== undefined) {
+      if (!name.trim()) {
+        return res.status(400).json({ message: "Tên không được để trống" });
+      }
+      user.name = name.trim();
+    }
+    if (phone !== undefined) {
+      if (!phone.trim()) {
+        return res.status(400).json({ message: "Số điện thoại không được để trống" });
+      }
+      user.phone = phone.trim();
+    }
+    if (address !== undefined) {
+      user.address = address.trim();
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        address: user.address,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Lỗi server khi cập nhật user" });
   }
 };
 
