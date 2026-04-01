@@ -65,6 +65,7 @@ const productSchema = new mongoose.Schema(
     {
         timestamps: true,
         collection: "products",
+        versionKey: false,
     }
 );
 
